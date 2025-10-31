@@ -9,8 +9,6 @@ blueprint:
       selector:
         device:
           integration: zha
-          manufacturer: LUMI
-          model: lumi.sensor_86sw2
     button:
       name: Button
       description: Which button to use
