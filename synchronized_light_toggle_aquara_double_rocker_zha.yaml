@@ -1,41 +1,27 @@
 blueprint:
-  name: Synchronized Light Toggle (Aqara Switch)
-  description: Toggle multiple lights in sync using Aqara double rocker switch buttons
+  name: Synchronized Light Toggle (Aqara Double Rocker)
+  description: Toggle multiple lights in sync using Aqara WXKG07LM double rocker switch
   domain: automation
   input:
-    switch_device:
-      name: Aqara Switch Device
-      description: The Aqara double rocker switch
+    remote:
+      name: Aqara Double Rocker Switch
+      description: Select the Aqara WXKG07LM switch
       selector:
         device:
           integration: zha
           manufacturer: LUMI
-          model: lumi.switch.b2naus01
-          multiple: false
-    button_identifier:
+          model: lumi.sensor_86sw2
+    button:
       name: Button
       description: Which button to use
+      default: left
       selector:
         select:
           options:
-            - label: "Left Button"
-              value: "button_1"
-            - label: "Right Button"
-              value: "button_2"
-      default: "button_1"
-    press_type:
-      name: Press Type
-      description: Type of button press
-      selector:
-        select:
-          options:
-            - label: "Single Press"
-              value: "single"
-            - label: "Double Press"
-              value: "double"
-            - label: "Long Press"
-              value: "long"
-      default: "single"
+            - label: Left Button
+              value: left
+            - label: Right Button
+              value: right
     master_light:
       name: Master Light
       description: The light that determines the state for all lights
@@ -51,12 +37,29 @@ blueprint:
           domain: light
           multiple: true
 
+mode: restart
+max_exceeded: silent
+
+variables:
+  button_map:
+    left: 1
+    right: 2
+  selected_button: !input button
+
 trigger:
-  - platform: device
-    device_id: !input switch_device
-    domain: zha
-    type: remote_button_short_press
-    subtype: !input button_identifier
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input remote
+      command: attribute_updated
+      cluster_id: 6
+      args:
+        attribute_name: on_off
+        value: 1
+
+condition:
+  - condition: template
+    value_template: "{{ trigger.event.data.endpoint_id == button_map[selected_button] }}"
 
 action:
   - choose:
