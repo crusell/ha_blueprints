@@ -1,0 +1,55 @@
+blueprint:
+  name: Synchronized Light Toggle
+  description: Toggle multiple lights in sync using a master light to determine the target state
+  domain: automation
+  input:
+    master_light:
+      name: Master Light
+      description: The light that determines the state for all lights
+      selector:
+        entity:
+          domain: light
+    follower_lights:
+      name: Follower Lights (Optional)
+      description: Additional lights that will follow the master light's state
+      default: []
+      selector:
+        entity:
+          domain: light
+          multiple: true
+    trigger_entity:
+      name: Trigger
+      description: What triggers this automation (button, switch, etc.)
+      selector:
+        entity: {}
+
+trigger:
+  - platform: state
+    entity_id: !input trigger_entity
+
+action:
+  - choose:
+      # If master light is ON, turn everything OFF
+      - conditions:
+          - condition: state
+            entity_id: !input master_light
+            state: "on"
+        sequence:
+          - service: light.turn_off
+            target:
+              entity_id: !input master_light
+          - service: light.turn_off
+            target:
+              entity_id: !input follower_lights
+      # If master light is OFF, turn everything ON
+      - conditions:
+          - condition: state
+            entity_id: !input master_light
+            state: "off"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input master_light
+          - service: light.turn_on
+            target:
+              entity_id: !input follower_lights
