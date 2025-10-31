@@ -1,0 +1,86 @@
+blueprint:
+  name: Synchronized Light Toggle (Aqara Switch)
+  description: Toggle multiple lights in sync using Aqara double rocker switch buttons
+  domain: automation
+  input:
+    switch_device:
+      name: Aqara Switch Device
+      description: The Aqara double rocker switch
+      selector:
+        device:
+          integration: zha
+          manufacturer: LUMI
+          model: lumi.switch.b2naus01
+          multiple: false
+    button_identifier:
+      name: Button
+      description: Which button to use
+      selector:
+        select:
+          options:
+            - label: "Left Button"
+              value: "button_1"
+            - label: "Right Button"
+              value: "button_2"
+      default: "button_1"
+    press_type:
+      name: Press Type
+      description: Type of button press
+      selector:
+        select:
+          options:
+            - label: "Single Press"
+              value: "single"
+            - label: "Double Press"
+              value: "double"
+            - label: "Long Press"
+              value: "long"
+      default: "single"
+    master_light:
+      name: Master Light
+      description: The light that determines the state for all lights
+      selector:
+        entity:
+          domain: light
+    follower_lights:
+      name: Follower Lights (Optional)
+      description: Additional lights that will follow the master light's state
+      default: []
+      selector:
+        entity:
+          domain: light
+          multiple: true
+
+trigger:
+  - platform: device
+    device_id: !input switch_device
+    domain: zha
+    type: remote_button_short_press
+    subtype: !input button_identifier
+
+action:
+  - choose:
+      # If master light is ON, turn everything OFF
+      - conditions:
+          - condition: state
+            entity_id: !input master_light
+            state: "on"
+        sequence:
+          - service: light.turn_off
+            target:
+              entity_id: !input master_light
+          - service: light.turn_off
+            target:
+              entity_id: !input follower_lights
+      # If master light is OFF, turn everything ON
+      - conditions:
+          - condition: state
+            entity_id: !input master_light
+            state: "off"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input master_light
+          - service: light.turn_on
+            target:
+              entity_id: !input follower_lights
