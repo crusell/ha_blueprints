@@ -32,26 +32,24 @@ blueprint:
     below_for:
       name: Must stay below for
       default:
-        hours: 0
         minutes: 10
-        seconds: 0
       selector:
         duration: {}
 
 mode: single
 
-triggers:
-  - trigger: numeric_state
+trigger:
+  - platform: numeric_state
     entity_id: !input power_sensor
     below: !input threshold_w
     for: !input below_for
 
-conditions:
+condition:
   - condition: state
     entity_id: !input charger_switch
     state: "on"
 
-actions:
-  - action: switch.turn_off
+action:
+  - service: switch.turn_off
     target:
       entity_id: !input charger_switch
