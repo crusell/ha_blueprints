@@ -6,18 +6,19 @@ blueprint:
   domain: automation
   homeassistant:
     min_version: 2024.4.0
-
   input:
     power_sensor:
       name: Power sensor
       selector:
         entity:
-          domain: sensor
+          filter:
+            domain: sensor
     charger_switch:
       name: Charger switch
       selector:
         entity:
-          domain: switch
+          filter:
+            domain: switch
     threshold_w:
       name: Threshold (W)
       default: 3
@@ -30,24 +31,27 @@ blueprint:
           mode: box
     below_for:
       name: Must stay below for
-      default: "00:10:00"
+      default:
+        hours: 0
+        minutes: 10
+        seconds: 0
       selector:
         duration: {}
 
 mode: single
 
-trigger:
-  - platform: numeric_state
+triggers:
+  - trigger: numeric_state
     entity_id: !input power_sensor
     below: !input threshold_w
     for: !input below_for
 
-condition:
+conditions:
   - condition: state
     entity_id: !input charger_switch
     state: "on"
 
-action:
-  - service: switch.turn_off
+actions:
+  - action: switch.turn_off
     target:
       entity_id: !input charger_switch
