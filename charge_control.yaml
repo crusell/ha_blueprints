@@ -1,0 +1,52 @@
+blueprint:
+  name: Charge control - turn off charger when idle
+  description: >
+    Turns off a charger switch when its power sensor stays below a threshold for a given time.
+  domain: automation
+  homeassistant:
+    min_version: 2024.4.0
+
+input:
+  power_sensor:
+    name: Power sensor
+    selector:
+      entity:
+        domain: sensor
+  charger_switch:
+    name: Charger switch
+    selector:
+      entity:
+        domain: switch
+  threshold_w:
+    name: Threshold (W)
+    default: 3
+    selector:
+      number:
+        min: 0
+        max: 1000
+        step: 0.1
+        unit_of_measurement: W
+        mode: box
+  below_for:
+    name: Must stay below for
+    default: "00:10:00"
+    selector:
+      duration: {}
+
+mode: single
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input power_sensor
+    below: !input threshold_w
+    for: !input below_for
+
+condition:
+  - condition: state
+    entity_id: !input charger_switch
+    state: "on"
+
+action:
+  - service: switch.turn_off
+    target:
+      entity_id: !input charger_switch
