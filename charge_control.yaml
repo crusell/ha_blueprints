@@ -1,34 +1,44 @@
 blueprint:
-  name: Charge control - turn off charger when idle
+  name: Charge control - turn off charger when idle (periodic + min on-time)
   description: >
-    Turns off a charger switch when its power sensor stays below a threshold
-    for a given duration.
+    Periodically checks a power sensor and turns off a charger switch when
+    power stays below a threshold for a set duration, and the switch has been
+    on for at least a minimum on-time. Works even if power never rises above
+    the threshold.
   domain: automation
   homeassistant:
     min_version: 2024.4.0
+
   input:
     power_sensor:
       name: Power sensor
       selector:
         entity:
           filter:
-            domain: sensor
+            - domain:
+                - sensor
+          multiple: false
+
     charger_switch:
       name: Charger switch
       selector:
         entity:
           filter:
-            domain: switch
+            - domain:
+                - switch
+          multiple: false
+
     threshold_w:
       name: Threshold (W)
       default: 3
       selector:
         number:
-          min: 0
-          max: 1000
+          min: 0.0
+          max: 1000.0
           step: 0.1
           unit_of_measurement: W
           mode: box
+
     below_for:
       name: Must stay below for
       default:
@@ -36,18 +46,41 @@ blueprint:
       selector:
         duration: {}
 
+    min_on_time:
+      name: Minimum on-time
+      description: Charger must have been ON at least this long before it can be turned off.
+      default:
+        minutes: 5
+      selector:
+        duration: {}
+
 mode: single
 
 trigger:
-  - platform: numeric_state
-    entity_id: !input power_sensor
-    below: !input threshold_w
-    for: !input below_for
+  - platform: time_pattern
+    minutes: "/1"
 
 condition:
   - condition: state
     entity_id: !input charger_switch
     state: "on"
+
+  # Minimum on-time
+  - condition: state
+    entity_id: !input charger_switch
+    state: "on"
+    for: !input min_on_time
+
+  # Sensor must be numeric/available, otherwise numeric_state won't match reliably
+  - condition: template
+    value_template: >
+      {{ states(!input power_sensor) not in ['unknown','unavailable','none',''] }}
+
+  # Must be below threshold for the specified duration
+  - condition: numeric_state
+    entity_id: !input power_sensor
+    below: !input threshold_w
+    for: !input below_for
 
 action:
   - service: switch.turn_off
