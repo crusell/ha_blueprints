@@ -1,10 +1,10 @@
 blueprint:
   name: Charge control - turn off charger when idle (periodic + min on-time)
   description: >
-    Periodically checks a power sensor and turns off a charger switch when
-    power stays below a threshold for a set duration, and the switch has been
-    on for at least a minimum on-time. Works even if power never rises above
-    the threshold.
+    Turns off a charger switch when its power stays below a threshold for a given duration.
+    Uses periodic evaluation and a wait_template (so it works even if power never rises above the threshold).
+    Includes a minimum on-time (default 5 minutes).
+
   domain: automation
   homeassistant:
     min_version: 2024.4.0
@@ -56,35 +56,33 @@ mode: single
 trigger:
   - platform: time_pattern
     minutes: "/1"
+  - platform: homeassistant
+    event: start
 
 variables:
   power_entity: !input power_sensor
   switch_entity: !input charger_switch
+  threshold: !input threshold_w
 
 condition:
-  # Switch must be on
   - condition: state
     entity_id: !input charger_switch
     state: "on"
 
-  # Must have been on for at least min_on_time
+  # Minimum on-time (state condition supports "for")
   - condition: state
     entity_id: !input charger_switch
     state: "on"
     for: !input min_on_time
 
-  # Power sensor must be available (NO !input inside the template!)
-  - condition: template
-    value_template: >
-      {{ states(power_entity) not in ['unknown','unavailable','none',''] }}
-
-  # Power must be below threshold for below_for
-  - condition: numeric_state
-    entity_id: !input power_sensor
-    below: !input threshold_w
-    for: !input below_for
-
 action:
+  # Wait until power has been below threshold continuously for below_for
+  - wait_template: >
+      {{ (states(power_entity) | float(999999)) < (threshold | float(0)) }}
+    for: !input below_for
+    timeout: "00:00:00"
+    continue_on_timeout: false
+
   - service: switch.turn_off
     target:
       entity_id: !input charger_switch
