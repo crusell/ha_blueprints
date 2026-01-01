@@ -60,6 +60,11 @@ trigger:
   - platform: time_pattern
     minutes: "/1"
 
+# Capture blueprint inputs into variables we CAN use in templates if needed
+variables:
+  power_entity: !input power_sensor
+  switch_entity: !input charger_switch
+
 condition:
   - condition: state
     entity_id: !input charger_switch
@@ -70,11 +75,6 @@ condition:
     entity_id: !input charger_switch
     state: "on"
     for: !input min_on_time
-
-  # Sensor must be numeric/available, otherwise numeric_state won't match reliably
-  - condition: template
-    value_template: >
-      {{ states(!input power_sensor) not in ['unknown','unavailable','none',''] }}
 
   # Must be below threshold for the specified duration
   - condition: numeric_state
