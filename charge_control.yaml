@@ -15,8 +15,7 @@ blueprint:
       selector:
         entity:
           filter:
-            - domain:
-                - sensor
+            - domain: sensor
           multiple: false
 
     charger_switch:
@@ -24,8 +23,7 @@ blueprint:
       selector:
         entity:
           filter:
-            - domain:
-                - switch
+            - domain: switch
           multiple: false
 
     threshold_w:
@@ -48,7 +46,6 @@ blueprint:
 
     min_on_time:
       name: Minimum on-time
-      description: Charger must have been ON at least this long before it can be turned off.
       default:
         minutes: 5
       selector:
@@ -60,23 +57,28 @@ trigger:
   - platform: time_pattern
     minutes: "/1"
 
-# Capture blueprint inputs into variables we CAN use in templates if needed
 variables:
   power_entity: !input power_sensor
   switch_entity: !input charger_switch
 
 condition:
+  # Switch must be on
   - condition: state
     entity_id: !input charger_switch
     state: "on"
 
-  # Minimum on-time
+  # Must have been on for at least min_on_time
   - condition: state
     entity_id: !input charger_switch
     state: "on"
     for: !input min_on_time
 
-  # Must be below threshold for the specified duration
+  # Power sensor must be available (NO !input inside the template!)
+  - condition: template
+    value_template: >
+      {{ states(power_entity) not in ['unknown','unavailable','none',''] }}
+
+  # Power must be below threshold for below_for
   - condition: numeric_state
     entity_id: !input power_sensor
     below: !input threshold_w
