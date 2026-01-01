@@ -1,88 +1,151 @@
 blueprint:
-  name: Charge control - turn off charger when idle (periodic + min on-time)
+  name: Charger Auto Shutoff
   description: >
-    Turns off a charger switch when its power stays below a threshold for a given duration.
-    Uses periodic evaluation and a wait_template (so it works even if power never rises above the threshold).
-    Includes a minimum on-time (default 5 minutes).
-
+    Automatically turns off a charger when power consumption drops below a threshold
+    for a specified duration. Useful for turning off chargers when devices are fully
+    charged or when charging fails to start.
   domain: automation
-  homeassistant:
-    min_version: 2024.4.0
-
   input:
-    power_sensor:
-      name: Power sensor
-      selector:
-        entity:
-          filter:
-            - domain: sensor
-          multiple: false
-
     charger_switch:
-      name: Charger switch
+      name: Charger Switch
+      description: The switch entity that controls the charger
       selector:
         entity:
-          filter:
-            - domain: switch
-          multiple: false
-
-    threshold_w:
-      name: Threshold (W)
-      default: 3
+          domain: switch
+    power_sensor:
+      name: Power Sensor
+      description: The sensor that measures power consumption (in Watts)
+      selector:
+        entity:
+          domain: sensor
+          device_class: power
+    power_threshold:
+      name: Power Threshold
+      description: Power threshold in Watts - turn off if below this value
+      default: 5
       selector:
         number:
-          min: 0.0
-          max: 1000.0
-          step: 0.1
-          unit_of_measurement: W
+          min: 0
+          max: 1000
+          unit_of_measurement: "W"
+          mode: box
+    time_duration:
+      name: Time Duration
+      description: How long power must stay below threshold before turning off
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: "minutes"
+          mode: box
+    grace_period:
+      name: Grace Period After Turn On
+      description: Time to wait after turning on before monitoring (allows charger to stabilize)
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 30
+          unit_of_measurement: "minutes"
+          mode: box
+    enable_failed_start_detection:
+      name: Enable Failed Start Detection
+      description: Turn off if power never exceeds threshold after grace period
+      default: true
+      selector:
+        boolean:
+    failed_start_timeout:
+      name: Failed Start Timeout
+      description: Time to wait for charging to start before giving up (after grace period)
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: "minutes"
           mode: box
 
-    below_for:
-      name: Must stay below for
-      default:
-        minutes: 10
-      selector:
-        duration: {}
-
-    min_on_time:
-      name: Minimum on-time
-      default:
-        minutes: 5
-      selector:
-        duration: {}
-
-mode: single
-
-trigger:
-  - platform: time_pattern
-    minutes: "/1"
-  - platform: homeassistant
-    event: start
+mode: restart
+max_exceeded: silent
 
 variables:
-  power_entity: !input power_sensor
-  switch_entity: !input charger_switch
-  threshold: !input threshold_w
+  charger_switch: !input charger_switch
+  power_sensor: !input power_sensor
+  power_threshold: !input power_threshold
+  time_duration: !input time_duration
+  grace_period: !input grace_period
+  enable_failed_start: !input enable_failed_start_detection
+  failed_start_timeout: !input failed_start_timeout
 
-condition:
-  - condition: state
+trigger:
+  - platform: state
     entity_id: !input charger_switch
-    state: "on"
-
-  # Minimum on-time (state condition supports "for")
-  - condition: state
-    entity_id: !input charger_switch
-    state: "on"
-    for: !input min_on_time
+    to: "on"
+    id: charger_turned_on
 
 action:
-  # Wait until power has been below threshold continuously for below_for
-  - wait_template: >
-      {{ (states(power_entity) | float(999999)) < (threshold | float(0)) }}
-    for: !input below_for
-    timeout: "00:00:00"
-    continue_on_timeout: false
-
-  - service: switch.turn_off
-    target:
-      entity_id: !input charger_switch
+  - choose:
+      # When charger turns on
+      - conditions:
+          - condition: trigger
+            id: charger_turned_on
+        sequence:
+          # Wait for grace period to allow charger to stabilize
+          - delay:
+              minutes: !input grace_period
+          
+          # Check if we should monitor for failed start
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ enable_failed_start }}"
+                sequence:
+                  # Wait for charging to start (power to exceed threshold)
+                  - wait_for_trigger:
+                      - platform: numeric_state
+                        entity_id: !input power_sensor
+                        above: !input power_threshold
+                    timeout:
+                      minutes: !input failed_start_timeout
+                    continue_on_timeout: true
+                  
+                  # If timeout occurred (charging never started), turn off
+                  - if:
+                      - condition: template
+                        value_template: "{{ wait.trigger == none }}"
+                    then:
+                      - service: switch.turn_off
+                        target:
+                          entity_id: !input charger_switch
+                      - service: logbook.log
+                        data:
+                          name: "Charger Auto Shutoff"
+                          message: >
+                            Turned off {{ state_attr(charger_switch, 'friendly_name') }} 
+                            because charging failed to start. Power stayed at 
+                            {{ states(power_sensor) }}W (threshold: {{ power_threshold }}W)
+                      - stop: "Charging failed to start"
+          
+          # Monitor for power dropping below threshold
+          - wait_for_trigger:
+              - platform: numeric_state
+                entity_id: !input power_sensor
+                below: !input power_threshold
+                for:
+                  minutes: !input time_duration
+            continue_on_timeout: false
+          
+          # Turn off the charger
+          - service: switch.turn_off
+            target:
+              entity_id: !input charger_switch
+          
+          # Log the event
+          - service: logbook.log
+            data:
+              name: "Charger Auto Shutoff"
+              message: >
+                Turned off {{ state_attr(charger_switch, 'friendly_name') }} 
+                because power dropped below {{ power_threshold }}W for 
+                {{ time_duration }} minutes. Final power: {{ states(power_sensor) }}W
